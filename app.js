@@ -440,7 +440,19 @@ function analyze(img, sensKey) {
     const near = dilateFast(maskAll, aw, ah, 41);
     for (let i = 0; i < n; i++) if (looseMask[i] && near[i]) maskAll[i] = 1;
   }
-  const tint = baseColorMask(H, S, V, SENS.loose);
+  const looseBase = baseColorMask(H, S, V, SENS.loose);
+  const tint = new Uint8Array(n);
+  for (const fam of FAMILIES) {
+    for (let i = 0; i < n; i++) {
+      if (looseBase[i] && fam.test(r[i], g[i], b[i])) tint[i] = 1;
+    }
+  }
+  if (!bands.length && sensKey !== 'loose') {
+    // 自動再試一次寬鬆模式（減少漏字）
+    const retry = analyze(img, 'loose');
+    return { mask: retry.mask, tint: retry.tint, bands: retry.bands,
+             aw: retry.aw, ah: retry.ah, scale: retry.scale, retried: true };
+  }
   return { mask: maskAll, tint, bands, aw, ah, scale };
 }
 
@@ -661,105 +673,151 @@ function processPixels(img, sensKey, mode, exactBands) {
     }));
   }
 
-  if (mode === 'erase' && exactBands && exactBands.length) {
+  if (mode === 'erase') {
     const paper = buildPaperField(img.data, maskFull, W, H, 24 * scale);
+    const tintFull = upscaleMask(analyzed.tint, aw, ah, W, H);
     const rng = makeRng(1234);
-    for (const bd of scaled) {
-      const region = new Uint8Array(W * img.height);
-      const { x0, y0, x1, y1 } = bd;
-      if (x1 <= x0 || y1 <= y0) continue;
-      // 範圍 = quad + 附近嘅螢光筆混色邊緣（但唔會填走深色字）
-      const ex0 = Math.max(0, x0 - 8), ex1 = Math.min(W, x1 + 8);
-      const ey0 = Math.max(0, y0 - 8), ey1 = Math.min(img.height, y1 + 8);
-      for (let y = ey0; y < ey1; y++) {
-        const row = y * W;
-        for (let x = ex0; x < ex1; x++) {
-          const i = row + x;
-          const inBox = x >= x0 && x < x1 && y >= y0 && y < y1;
-          const j = i * 4;
-          const isDark = img.data[j] * 0.299 + img.data[j + 1] * 0.587 +
-            img.data[j + 2] * 0.114 < 110;
-          const diff = Math.abs(img.data[j] - paper[j]) +
-            Math.abs(img.data[j + 1] - paper[j + 1]) +
-            Math.abs(img.data[j + 2] - paper[j + 2]);
-          if (inBox || (!isDark && diff > 24)) region[i] = 1;
+
+    // 建立「筆觸封閉邊界」：筆觸 + 邊界內嘅文字/空隙（唔係長方形）
+    const region = new Uint8Array(W * H);
+    if (exactBands && exactBands.length) {
+      for (const bd of scaled) {
+        const x0 = Math.max(0, bd.x0), x1 = Math.min(W, bd.x1);
+        const y0 = Math.max(0, bd.y0), y1 = Math.min(H, bd.y1);
+        for (let y = y0; y < y1; y++) {
+          const row = y * W;
+          for (let x = x0; x < x1; x++) region[row + x] = 1;
+        }
+        // 註解外觀嘅凸出邊緣（cap）都抹走
+        const ex0 = Math.max(0, x0 - 8), ex1 = Math.min(W, x1 + 8);
+        const ey0 = Math.max(0, y0 - 4), ey1 = Math.min(H, y1 + 4);
+        for (let y = ey0; y < ey1; y++) {
+          const row = y * W;
+          for (let x = ex0; x < ex1; x++) if (tintFull[row + x]) region[row + x] = 1;
         }
       }
-      fillRegionMask(out, img, paper, region, bd,
-        { x0: ex0, y0: ey0, x1: ex1, y1: ey1 }, W, rng);
-    }
-  } else if (mode === 'erase') {
-    const paper = buildPaperField(img.data, maskFull, W, H, 24 * scale);
-    const rng = makeRng(1234);
-    const pad = 2;
-    const covered = new Uint8Array(W * H);
-    for (const bd of scaled) {
-      const x0 = Math.max(0, bd.x0 - pad), x1 = Math.min(W, bd.x1 + pad);
-      const y0 = Math.max(0, bd.y0 - pad), y1 = Math.min(H, bd.y1 + pad);
-      for (let y = y0; y < y1; y++) {
-        const row = y * W;
-        for (let x = x0; x < x1; x++) covered[row + x] = 1;
-      }
-    }
-    const regionMask = dilateFast(maskFull, W, H, 5);
-
-    for (const bd of scaled) {
-      const { x0, y0, x1, y1 } = bd;
-      if (x1 <= x0 || y1 <= y0) continue;
-      const ex0 = Math.max(0, x0 - 6), ex1 = Math.min(W, x1 + 6);
-      const ey0 = Math.max(0, y0 - 6), ey1 = Math.min(H, y1 + 6);
-      const br = 10;
-      const rx0 = Math.max(0, x0 - br), rx1 = Math.min(W, x1 + br);
-      const ry0 = Math.max(0, y0 - br), ry1 = Math.min(H, y1 + br);
-
-      let sr = 0, sg = 0, sb = 0, n = 0;
-      let pr = 0, pg = 0, pb = 0, pn = 0;
-      let nR = 0, nG = 0, nB = 0, nn = 0;
-      for (let y = ry0; y < ry1; y++) {
-        if (y >= y0 && y < y1) continue;
-        const row = y * W;
-        for (let x = rx0; x < rx1; x++) {
-          const i = row + x;
-          if (covered[i] || maskFull[i]) continue;
-          const j = i * 4;
-          sr += img.data[j]; sg += img.data[j + 1]; sb += img.data[j + 2];
-          pr += paper[j]; pg += paper[j + 1]; pb += paper[j + 2];
-          nR += Math.abs(img.data[j] - paper[j]);
-          nG += Math.abs(img.data[j + 1] - paper[j + 1]);
-          nB += Math.abs(img.data[j + 2] - paper[j + 2]);
-          n++; pn++;
+    } else {
+      for (const bd of scaled) {
+        const x0 = Math.max(0, bd.x0 - 4), x1 = Math.min(W, bd.x1 + 4);
+        const y0 = Math.max(0, bd.y0 - 4), y1 = Math.min(H, bd.y1 + 4);
+        const w = x1 - x0, h = y1 - y0;
+        if (w <= 2 || h <= 2) continue;
+        // 1) 先將筆觸少少閉合，避免淡色邊緣有缺口令洪水漏出去
+        const local = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) {
+          const srow = (y + y0) * W;
+          for (let x = 0; x < w; x++) local[y * w + x] = tintFull[srow + x0 + x] ? 1 : 0;
         }
-      }
-      let oR = 0, oG = 0, oB = 0;
-      if (n >= 40) {
-        oR = sr / n - pr / pn;
-        oG = sg / n - pg / pn;
-        oB = sb / n - pb / pn;
-      }
-      const sigma = n ? 1.4826 * ((nR + nG + nB) / (n * 3)) : 0;
-
-      for (let y = ey0; y < ey1; y++) {
-        const row = y * W;
-        for (let x = ex0; x < ex1; x++) {
-          const i = row + x;
-          const inBox = x >= x0 && x < x1 && y >= y0 && y < y1;
-          if (!inBox && !regionMask[i]) continue;
-          const j = i * 4;
-          let rr = paper[j] + oR, gg = paper[j + 1] + oG, bb = paper[j + 2] + oB;
-          if (sigma > 0.2) {
-            rr += gauss(rng) * sigma;
-            gg += gauss(rng) * sigma;
-            bb += gauss(rng) * sigma;
+        const closed = dilateFast(erodeFast(dilateFast(local, w, h, 3), w, h, 3), w, h, 3);
+        // 2) 由邊界洪水填充，搵出「被筆觸圍住」嘅區域
+        const outside = new Uint8Array(w * h);
+        const stack = [];
+        for (let x = 0; x < w; x++) {
+          if (!closed[x]) { outside[x] = 1; stack.push(x); }
+          const b = (h - 1) * w + x;
+          if (!closed[b]) { outside[b] = 1; stack.push(b); }
+        }
+        for (let y = 0; y < h; y++) {
+          if (!closed[y * w]) { outside[y * w] = 1; stack.push(y * w); }
+          const b = y * w + w - 1;
+          if (!closed[b]) { outside[b] = 1; stack.push(b); }
+        }
+        while (stack.length) {
+          const p = stack.pop();
+          const px = p % w, py = (p - px) / w;
+          const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+          for (const [dx, dy] of nb) {
+            const nx = px + dx, ny = py + dy;
+            if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+            const q = ny * w + nx;
+            if (closed[q] || outside[q]) continue;
+            outside[q] = 1;
+            stack.push(q);
           }
-          out[j] = clamp255(rr);
-          out[j + 1] = clamp255(gg);
-          out[j + 2] = clamp255(bb);
+        }
+        // 3) 邊界內：筆觸 + 洞（文字）全部填
+        for (let y = 0; y < h; y++) {
+          const srow = (y + y0) * W;
+          for (let x = 0; x < w; x++) {
+            const i = y * w + x;
+            if (!outside[i]) region[srow + x0 + x] = 1;
+          }
         }
       }
+    }
+
+    // 4) 邊緣羽化（1-2px），再用紙色場 + 局部色差 + 紙紋填滿
+    const alpha = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) alpha[i] = region[i] ? 255 : 0;
+    for (let pass = 0; pass < 2; pass++) {
+      const cp = new Uint8Array(alpha);
+      for (let y = 0; y < H; y++) {
+        const row = y * W;
+        for (let x = 0; x < W; x++) {
+          const i = row + x;
+          let sum = 0, n = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            const yy = y + dy;
+            if (yy < 0 || yy >= H) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              const xx = x + dx;
+              if (xx < 0 || xx >= W) continue;
+              sum += cp[yy * W + xx]; n++;
+            }
+          }
+          alpha[i] = sum / n;
+        }
+      }
+    }
+
+    // 5) 局部色差：由邊界外 3–24px、真係似紙色嘅像素校正紙色場
+    const d1 = dilateFast(region, W, H, 5);
+    const d2 = dilateFast(region, W, H, 49);
+    let sr = 0, sg = 0, sb = 0, pr = 0, pg = 0, pb = 0, n = 0;
+    for (let i = 0; i < W * H; i++) {
+      if (!d2[i] || d1[i]) continue;
+      const j = i * 4;
+      const dr = img.data[j] - paper[j];
+      const dg = img.data[j + 1] - paper[j + 1];
+      const db = img.data[j + 2] - paper[j + 2];
+      if (Math.abs(dr) + Math.abs(dg) + Math.abs(db) > 18) continue; // 似筆觸／字就跳過
+      sr += dr; sg += dg; sb += db;
+      n++;
+    }
+    let oR = 0, oG = 0, oB = 0;
+    if (n >= 60) { oR = sr / n; oG = sg / n; oB = sb / n; }
+
+    // 6) 紙紋噪音
+    let nR = 0, nG = 0, nB = 0, nn = 0;
+    for (let i = 0; i < W * H; i += 3) {
+      if (region[i]) continue;
+      const j = i * 4;
+      nR += Math.abs(img.data[j] - paper[j]);
+      nG += Math.abs(img.data[j + 1] - paper[j + 1]);
+      nB += Math.abs(img.data[j + 2] - paper[j + 2]);
+      nn++;
+    }
+    const sigma = nn ? 1.4826 * ((nR + nG + nB) / (nn * 3)) : 0;
+
+    for (let i = 0; i < W * H; i++) {
+      const a = alpha[i] / 255;
+      if (a <= 0) continue;
+      const j = i * 4;
+      let rr = paper[j] + oR, gg = paper[j + 1] + oG, bb = paper[j + 2] + oB;
+      if (sigma > 0.2) {
+        rr += gauss(rng) * sigma; gg += gauss(rng) * sigma; bb += gauss(rng) * sigma;
+      }
+      out[j] = clamp255(img.data[j] * (1 - a) + rr * a);
+      out[j + 1] = clamp255(img.data[j + 1] * (1 - a) + gg * a);
+      out[j + 2] = clamp255(img.data[j + 2] * (1 - a) + bb * a);
     }
   } else {
+    // 只抹字、保留螢光底色  } else {
+    // 只抹字、保留螢光底色  } else {
+    // 只抹字、保留螢光底色  } else {
     // 只抹字、保留螢光底色
     const useExact = !!(exactBands && exactBands.length);
+    const textMask = useExact ? maskFull : dilateFast(tintFull, W, H, 5);
     for (const bd of scaled) {
       const { x0, y0, x1, y1 } = bd;
       const bw = x1 - x0, bh = y1 - y0;
@@ -771,7 +829,7 @@ function processPixels(img, sensKey, mode, exactBands) {
         let best = -1, br2 = 220, bg2 = 220, bb2 = 220;
         for (let y = y0; y < y1; y++) {
           const i = y * W + x;
-          if (!useExact && !maskFull[i]) continue;
+          if (!useExact && !textMask[i]) continue;
           const j = i * 4;
           const mx = Math.max(img.data[j], img.data[j + 1], img.data[j + 2]);
           const mn = Math.min(img.data[j], img.data[j + 1], img.data[j + 2]);
@@ -785,7 +843,7 @@ function processPixels(img, sensKey, mode, exactBands) {
         const row = y * W;
         for (let x = x0; x < x1; x++) {
           const i = row + x;
-          if (!useExact && !maskFull[i]) continue;
+          if (!useExact && !textMask[i]) continue;
           const j = i * 4;
           const lum = img.data[j] * 0.299 + img.data[j + 1] * 0.587 + img.data[j + 2] * 0.114;
           const cx = x - x0;
