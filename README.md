@@ -1,5 +1,11 @@
 # 🖍️ 螢光筆抹除器（純前端版）
 
+## 🌐 已經上線
+
+**https://vincent-dot9981.github.io/highlight-eraser/**
+
+任何人開呢條 link 就用得，唔需要登入、唔需要安裝；檔案完全留喺用家自己嘅瀏覽器。
+
 上載 **PDF、掃描件、影相（支援 iPhone HEIC）**，自動找出實體螢光筆畫喺紙上嘅
 highlight，再將被 highlight 嘅文字抹走。
 
@@ -8,23 +14,16 @@ GitHub Pages／任何靜態主機，免費永久公開使用。
 
 ---
 
-## 點樣部署上 GitHub Pages（5 步，唔需要寫 code）
+## 更新網站
 
-1. 登入 GitHub → 右上角 **+** → **New repository**
-2. Repository name 例如 `highlight-eraser`，揀 **Public** → **Create repository**
-3. 喺新 repo 頁面㩒 **Add file → Upload files**
-4. 將呢個資料夾入面嘅**所有檔案同資料夾**（`index.html`、`app.js`、`main.js`、`vendor/`）
-   拖入去 → **Commit changes**
-5. 去 **Settings → Pages** → Source 揀 **Deploy from a branch**
-   → Branch 揀 `main`、folder 揀 `/ (root)` → **Save**
+呢個資料夾就係 GitHub repo（`vincent-dot9981/highlight-eraser`）嘅內容。
+改完檔案之後：
 
-等大約 1 分鐘，你嘅網址就係：
-
-```
-https://<你嘅 GitHub 用戶名>.github.io/highlight-eraser/
+```bash
+git add -A && git commit -m "update" && git push
 ```
 
-> 之後想更新，只需再 Upload files 覆蓋，Pages 會自動重新部署。
+GitHub Pages 會自動重新部署（大約 1 分鐘）。
 
 ---
 
