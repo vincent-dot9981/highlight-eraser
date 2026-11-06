@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-HK">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖍️</text></svg>" />
+<title>螢光筆抹除器</title>
+<style>
+  :root {
+    --ink: #1b1f2a; --ink-soft: #5b6472; --line: #e6e8ec; --bg: #f6f7f9;
+    --card: #fff; --accent: #ffd43b; --good: #12a37a;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 50% -200px, #fff7d6 0%, transparent 60%), var(--bg);
+    color: var(--ink); line-height: 1.55; min-height: 100vh; padding: 28px 16px 64px;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang HK", "PingFang TC",
+      "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 22px; }
+  .logo { font-size: 34px; line-height: 1; }
+  h1 { font-size: 26px; margin: 10px 0 6px; letter-spacing: .02em; }
+  .sub { color: var(--ink-soft); font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 22px; }
+
+  .drop { border: 2px dashed #d3d7de; border-radius: 14px; padding: 34px 20px; text-align: center;
+    cursor: pointer; transition: .15s; background: #fbfbfc; outline: none; }
+  .drop:hover, .drop:focus-visible { border-color: var(--accent); background: #fffdf3; }
+  .drop.over { border-color: var(--accent); background: #fffbe6; transform: scale(.995); }
+  .drop .big { font-size: 30px; margin-bottom: 6px; }
+  .drop .main { font-weight: 600; font-size: 15px; }
+  .drop .hint { color: var(--ink-soft); font-size: 13px; margin-top: 4px; }
+  .drop .formats { color: #9aa1ac; font-size: 12px; margin-top: 10px; }
+
+  .filechip { display: none; align-items: center; gap: 12px; margin-top: 14px;
+    padding: 10px 14px; background: #f8f9fb; border: 1px solid var(--line); border-radius: 12px; }
+  .filechip.show { display: flex; }
+  .filechip .icon { font-size: 20px; }
+  .filechip .meta { min-width: 0; flex: 1; }
+  .filechip .name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .filechip .size { font-size: 12px; color: var(--ink-soft); }
+  .filechip button { border: 1px solid var(--line); background: #fff; color: var(--ink-soft);
+    border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  .filechip button:hover { color: var(--ink); border-color: #c9ced6; }
+
+  .opts { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; margin-top: 18px; }
+  @media (max-width: 720px) { .opts { grid-template-columns: 1fr; } }
+  .label { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: #8a919c; margin-bottom: 8px; }
+  .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 480px) { .mode-grid { grid-template-columns: 1fr; } }
+  .mode-card { border: 1.5px solid var(--line); border-radius: 12px; padding: 11px 13px;
+    cursor: pointer; background: #fff; transition: .12s; display: block; }
+  .mode-card input { position: absolute; opacity: 0; pointer-events: none; }
+  .mode-card .t { font-size: 14px; font-weight: 650; }
+  .mode-card .d { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .mode-card:has(input:checked) { border-color: var(--accent); background: #fffdf2; }
+  .seg { display: flex; background: #f1f2f5; border-radius: 11px; padding: 3px; gap: 2px; }
+  .seg button { flex: 1; border: 0; background: transparent; padding: 8px 4px; border-radius: 8px;
+    cursor: pointer; font-size: 13px; color: var(--ink-soft); font-family: inherit; }
+  .seg button.on { background: #fff; color: var(--ink); font-weight: 650; box-shadow: 0 1px 3px rgba(16,24,40,.10); }
+  .note { font-size: 12.5px; color: var(--ink-soft); margin-top: 12px; }
+
+  .go { width: 100%; margin-top: 20px; padding: 14px 18px; border: 0; border-radius: 12px;
+    background: var(--accent); color: var(--ink); font-size: 16px; font-weight: 750;
+    font-family: inherit; cursor: pointer; transition: .15s; box-shadow: 0 2px 0 #e6bf2c; }
+  .go:hover:not(:disabled) { filter: brightness(1.03); }
+  .go:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 #e6bf2c; }
+  .go:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+
+  .progress { display: none; margin-top: 16px; }
+  .progress.show { display: block; }
+  .bar { height: 8px; border-radius: 99px; background: #eceef2; overflow: hidden; position: relative; }
+  .bar::after { content: ""; position: absolute; top: 0; left: -40%; width: 40%; height: 100%;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: slide 1.1s linear infinite; }
+  @keyframes slide { to { left: 100%; } }
+  .progress .msg { font-size: 13px; color: var(--ink-soft); margin-top: 8px; text-align: center; }
+
+  .result { display: none; margin-top: 24px; }
+  .result.show { display: block; }
+  .divider { height: 1px; background: var(--line); margin: 22px 0; }
+  .stats { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+  .pill { font-size: 13px; font-weight: 650; padding: 5px 11px; border-radius: 99px;
+    background: #eefaf5; color: #0b7a5b; border: 1px solid #c9efe1; }
+  .pill.warn { background: #fff7e6; color: #9a6700; border-color: #ffe3a3; }
+  .stats .time { font-size: 12px; color: #9aa1ac; margin-left: auto; }
+  .previews { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+  @media (max-width: 640px) { .previews { grid-template-columns: 1fr; } }
+  .pv { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+  .pv .cap { font-size: 12px; font-weight: 700; padding: 7px 11px; letter-spacing: .05em;
+    background: #fafbfc; border-bottom: 1px solid var(--line); color: var(--ink-soft); }
+  .pv .cap.after { color: #0b7a5b; background: #f4fcf8; }
+  .pv img { display: block; width: 100%; height: auto; background: #fff; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
+  .dl { display: inline-flex; align-items: center; gap: 8px; background: var(--ink); color: #fff;
+    text-decoration: none; padding: 11px 18px; border-radius: 11px; font-weight: 650; font-size: 14px; }
+  .dl:hover { background: #2b3140; }
+  .again { border: 1px solid var(--line); background: #fff; color: var(--ink);
+    padding: 10px 16px; border-radius: 11px; font-size: 14px; cursor: pointer; font-family: inherit; }
+  .again:hover { border-color: #c9ced6; }
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px);
+    background: #2b1d1d; color: #ffe1e1; padding: 12px 18px; border-radius: 12px; font-size: 14px;
+    opacity: 0; pointer-events: none; transition: .2s; max-width: min(560px, 90vw); box-shadow: var(--shadow); }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  footer { text-align: center; color: #9aa1ac; font-size: 12px; margin-top: 28px; }
+  footer code { background: #eef0f4; padding: 1px 5px; border-radius: 5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🖍️</div>
+    <h1>螢光筆抹除器</h1>
+    <div class="sub">上載 PDF、掃描件或影相（支援 iPhone HEIC），自動抹走實體螢光筆 highlight 嘅文字</div>
+  </header>
+
+  <main class="card">
+    <div id="drop" class="drop" role="button" tabindex="0" aria-label="選擇或拖入檔案">
+      <div class="big">📄</div>
+      <div class="main">將檔案拖到這裡，或點擊選擇</div>
+      <div class="hint">支援 PDF、HEIC／HEIF、JPG、PNG、WEBP</div>
+      <div class="formats">全部處理都喺你部裝置嘅瀏覽器進行，檔案唔會上傳去任何地方</div>
+      <input id="file" type="file" hidden
+             accept=".pdf,.heic,.heif,.jpg,.jpeg,.png,.webp" />
+    </div>
+
+    <div id="chip" class="filechip">
+      <div class="icon" id="chipIcon">📄</div>
+      <div class="meta">
+        <div class="name" id="chipName"></div>
+        <div class="size" id="chipSize"></div>
+      </div>
+      <button id="clear" type="button">移除</button>
+    </div>
+
+    <div class="opts">
+      <div>
+        <div class="label">處理方式</div>
+        <div class="mode-grid">
+          <label class="mode-card">
+            <input type="radio" name="mode" value="erase" checked />
+            <div class="t">連螢光筆一齊抹走</div>
+            <div class="d">整段變成頁面底色，私隱最徹底</div>
+          </label>
+          <label class="mode-card">
+            <input type="radio" name="mode" value="text" />
+            <div class="t">只抹字、保留螢光底色</div>
+            <div class="d">留住「邊段被 highlight」嘅痕跡</div>
+          </label>
+        </div>
+      </div>
+      <div>
+        <div class="label">偵測靈敏度</div>
+        <div class="seg" id="seg">
+          <button type="button" data-v="strict">保守</button>
+          <button type="button" data-v="normal" class="on">標準</button>
+          <button type="button" data-v="loose">寬鬆</button>
+        </div>
+        <div class="note" id="sensHint">影相／掃描件建議先用「標準」。</div>
+      </div>
+    </div>
+
+    <button id="go" class="go" type="button" disabled>開始抹除</button>
+
+    <div id="progress" class="progress">
+      <div class="bar"></div>
+      <div class="msg" id="progressMsg">處理中…</div>
+    </div>
+  </main>
+
+  <section id="result" class="result card">
+    <div class="divider" style="margin-top:0"></div>
+    <div class="stats" id="stats"></div>
+    <div class="previews">
+      <div class="pv">
+        <div class="cap">原本</div>
+        <img id="before" alt="處理前預覽" />
+      </div>
+      <div class="pv">
+        <div class="cap after">抹除之後</div>
+        <img id="after" alt="處理後預覽" />
+      </div>
+    </div>
+    <div class="actions">
+      <a id="download" class="dl" href="#" download>⬇️ 下載結果</a>
+      <button id="again" class="again" type="button">🔄 再處理一個檔案</button>
+    </div>
+    <div class="note" id="note"></div>
+  </section>
+
+  <footer>
+    純前端工具：所有運算喺你嘅瀏覽器完成，檔案唔會離開你部裝置。<br />
+    可以放喺 GitHub Pages 免費公開使用。
+  </footer>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/heic2any.min.js"></script>
+<script src="app.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
